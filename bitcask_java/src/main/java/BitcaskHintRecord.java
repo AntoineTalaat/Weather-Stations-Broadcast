@@ -3,34 +3,35 @@ import java.nio.ByteBuffer;
 
 /**
  * class to store records of hint files such that they are in the format
- *      tstamp |  ksz  |  valuesz  | value_pos  |  key
- *
+ * tstamp |  ksz  |  valuesz  | value_pos  |  key
  */
 public class BitcaskHintRecord {
     private long timestamp;
-    private long pos;
+    private int pos;
+    private int valueSize;
     private byte[] key;
 
-    public BitcaskHintRecord(long timestamp, long offset, byte[] keyBytes){
+    public BitcaskHintRecord(long timestamp,  byte[] keyBytes,int offset, int valueSize) {
         this.timestamp = timestamp;
         this.pos = offset;
         this.key = keyBytes;
+        this.valueSize = valueSize ;
     }
 
-    public byte[] getHintRecordBytes(){
+    public byte[] getHintRecordBytes() {
         byte[] timestampBytes = ByteBuffer.allocate(Long.BYTES).putLong(this.timestamp).array();
         byte[] keySizeBytes = ByteBuffer.allocate(Integer.BYTES).putInt(this.key.length).array();
-        byte[] posSizeBytes = ByteBuffer.allocate(Integer.BYTES).putInt(Long.BYTES).array();
-        byte[] valuePosBytes = ByteBuffer.allocate(Long.BYTES).putLong(this.pos).array();
+        byte[] valuePosBytes = ByteBuffer.allocate(Integer.BYTES).putLong(this.pos).array();
+        byte[] valueSizeBytes = ByteBuffer.allocate(Integer.BYTES).putLong(this.valueSize).array();
 
         // we have key bytes
         // we have value bytes
 
         byte[] result = null;
-        result = this.concatenateByteArrays(timestampBytes,keySizeBytes);
-        result = this.concatenateByteArrays(result,posSizeBytes);
-        result = this.concatenateByteArrays(result,valuePosBytes);
-        result = this.concatenateByteArrays(result,this.key);
+        result = this.concatenateByteArrays(timestampBytes, keySizeBytes);
+        result = this.concatenateByteArrays(result, this.key);
+        result = this.concatenateByteArrays(result, valuePosBytes);
+        result = this.concatenateByteArrays(result, valueSizeBytes);
 
 
         return result;

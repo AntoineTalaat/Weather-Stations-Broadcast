@@ -6,13 +6,13 @@ public class BitcaskPersistedRecord {
     private byte[] key;
     private byte[] value;
 
-    BitcaskPersistedRecord(long timestamp, byte[] keyBytes, byte[] valueBytes){
+    BitcaskPersistedRecord(long timestamp, byte[] keyBytes, byte[] valueBytes) {
         this.timestamp = timestamp;
         this.key = keyBytes;
         this.value = valueBytes;
     }
 
-    BitcaskPersistedRecord(byte[] record){
+    BitcaskPersistedRecord(byte[] record) {
         // Read the timestamp (first 8 bytes) as a long
         // Read the key size (next 4 bytes) as an integer // TODO change keysize to a short
         // Read the value size (next 4 bytes) as an integer
@@ -23,15 +23,14 @@ public class BitcaskPersistedRecord {
         int keySize = ByteBuffer.wrap(Arrays.copyOfRange(record, 8, 12)).getInt();
         int valueSize = ByteBuffer.wrap(Arrays.copyOfRange(record, 12, 16)).getInt();
         this.key = Arrays.copyOfRange(record, 16, 16 + keySize);
-        this.value= Arrays.copyOfRange(record, 16 + keySize, 16 + keySize + valueSize);
+        this.value = Arrays.copyOfRange(record, 16 + keySize, 16 + keySize + valueSize);
     }
 
     /**
-     *
      * @return record to be persisted on disk that has the following format
-     *          tstamp | keysize | valuesize | key | value
+     * tstamp | keysize | valuesize | key | value
      */
-    public byte[] getRecordBytes(){
+    public byte[] getRecordBytes() {
         byte[] timestampBytes = ByteBuffer.allocate(Long.BYTES).putLong(this.timestamp).array();
         byte[] keySizeBytes = ByteBuffer.allocate(Integer.BYTES).putInt(this.key.length).array();
         byte[] valueSizeBytes = ByteBuffer.allocate(Integer.BYTES).putInt(this.value.length).array();
@@ -39,13 +38,12 @@ public class BitcaskPersistedRecord {
         // we have value bytes
 
         byte[] result = null;
-        result = this.concatenateByteArrays(timestampBytes,keySizeBytes);
-        result = this.concatenateByteArrays(result,valueSizeBytes);
-        result = this.concatenateByteArrays(result,this.key);
-        result = this.concatenateByteArrays(result,this.value);
+        result = this.concatenateByteArrays(timestampBytes, keySizeBytes);
+        result = this.concatenateByteArrays(result, valueSizeBytes);
+        result = this.concatenateByteArrays(result, this.key);
+        result = this.concatenateByteArrays(result, this.value);
 
         return result;
-
     }
 
     private byte[] concatenateByteArrays(byte[] array1, byte[] array2) {

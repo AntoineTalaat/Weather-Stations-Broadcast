@@ -2,7 +2,6 @@
  * This Class is for the entry of KeyDir
  * Entries are in that form
  * key -> file_id | value_sz | value_pos | timestamp (from bitcask)
- *
  */
 
 public class KeyDirEntry {
@@ -12,7 +11,7 @@ public class KeyDirEntry {
     private long timestamp;
 
 
-    public KeyDirEntry(String fileID, int valueSz, long valuePos, long timestamp){
+    public KeyDirEntry(String fileID, int valueSz, long valuePos, long timestamp) {
         this.fileID = fileID;
         this.valueSz = valueSz;
         this.valuePos = valuePos;
