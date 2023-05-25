@@ -32,4 +32,8 @@ public class KeyDirEntry {
     public int getValuePos() {
         return valuePos;
     }
+
+    public long getTimestamp() {
+        return timestamp;
+    }
 }

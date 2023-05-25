@@ -1,0 +1,42 @@
+{
+    "type": "record",
+    "name": "TestObject",
+    "namespace": "ca.dataedu",
+    "fields": [{
+        "name": "battery_status",
+        "type": ["null", "string"],
+        "default": null
+    }, {
+        "name": "s_no",
+        "type": ["null", "long"],
+        "default": null
+    }, {
+        "name": "station_id",
+        "type": ["null", "long"],
+        "default": null
+    }, {
+        "name": "status_timestamp",
+        "type": ["null", "long"],
+        "default": null
+    }, {
+        "name": "weather",
+        "type": ["null", {
+            "type": "record",
+            "name": "Weather",
+            "fields": [{
+                "name": "humidity",
+                "type": ["null", "int"],
+                "default": null
+            }, {
+                "name": "temperature",
+                "type": ["null", "int"],
+                "default": null
+            }, {
+                "name": "wind_speed",
+                "type": ["null", "int"],
+                "default": null
+            }]
+        }],
+        "default": null
+    }]
+}

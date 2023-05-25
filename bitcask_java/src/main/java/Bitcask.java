@@ -1,7 +1,16 @@
+import BaseCentralStation.StationMessage;
+
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.FileSystemException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 public class Bitcask {
@@ -43,7 +52,7 @@ public class Bitcask {
      * --> active.hint
      * --> oldFile1 --> oldFile1.data
      * --> oldFile1.hint
-     * --> replicas ?? TODO
+     * --> replicas
      * etc
      */
     private void openBitcaskFoldersCreatedOrCreateNew() throws IOException {
@@ -53,34 +62,20 @@ public class Bitcask {
         this.checkDirectoryExistOrCreate(this.directoryPath);
         // get the names of the folders in the directory
         List<String> folderNames = getFolderNames(directoryPath);
+        this.createActiveFile(directoryPath);
 
-        // Check active folder
-        String activeDirectoryPath = this.directoryPath + "/" + Constants.ActiveDirectoryName;
+        this.keyDir = new Hashtable<>();
 
-        this.checkDirectoryExistOrCreate(activeDirectoryPath);
-        this.createActiveFile(activeDirectoryPath);
-        // Create hashtable and Load From Hint files if available
-        // TODO I will assume the hashtable doesn't exist and create empty one,
-        //  but when the project is more complete I need to consider reading the existing directories and
-        //  check if I had stored data before, and read them through the hint files
+        List<String> oldFilesNames = getFilesNames(directoryPath);
+        this.rebuildKeyDirectory(oldFilesNames);
 
-        //if there is no active or old folders or there is only active folder
-        if (folderNames.isEmpty() || folderNames.size() == 1)
-            this.keyDir = new Hashtable<>();
-        else {
-            this.keyDir = new Hashtable<>();
-            String oldDirectoryPath = this.directoryPath + "/" + Constants.OldDirectoryName;
-
-            List<String> oldFilesNames = getFilesNames(oldDirectoryPath);
-            this.rebuildKeyDirectory(oldFilesNames);
-        }
     }
 
     public byte[] get(byte[] keyBytes) throws IOException {
         ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
         KeyDirEntry pointer = keyDir.get(key);
 
-        String filePath = this.directoryPath + "/" + pointer.getFileID();
+        String filePath = pointer.getFileID();
         int offset = pointer.getValuePos();
         int sizeToBeRead = pointer.getValueSz();
 
@@ -101,13 +96,12 @@ public class Bitcask {
         long offset = this.activeWritingFile.getFilePointer() + Constants.TimeStampSize + Constants.KeySize + Constants.ValueSize + keyBytes.length;
         long placementTimestamp = System.currentTimeMillis();
 
-        String fileID = Constants.ActiveFilePath;
 
         byte[] record = (new BitcaskPersistedRecord(placementTimestamp, keyBytes, valueBytes)).getRecordBytes();
         int valSize = valueBytes.length;
 
         // normal appending
-        KeyDirEntry pointer = new KeyDirEntry(fileID, valSize, (int) offset, placementTimestamp);
+        KeyDirEntry pointer = new KeyDirEntry(directoryPath+"/active.data", valSize, (int) offset, placementTimestamp);
         this.activeWritingFile.write(record);
         keyDir.put(key, pointer);
 
@@ -116,7 +110,7 @@ public class Bitcask {
          * 1/ close the active file (give it a new id)
          * 2/ change all fileIDs entry that have the value "active" to the new generated ID
          *  and create hint file for the new (old file)
-         * 3/ replicate the newly created File TODO
+         * 3/ replicate the newly created File
          * 4/ create new file with active name
          * 5/increase the number of old files
          * 6 check if compaction is needed
@@ -128,29 +122,51 @@ public class Bitcask {
             // the above procedure
             // STEP 1 & 2
             String newName = this.generateFileId();
-            String activeDirectoryPath = directoryPath + "/" + Constants.ActiveDirectoryName;
-            String newDirectory = directoryPath + "/" + Constants.OldDirectoryName;
 
-            //check or create old directory
-            this.checkDirectoryExistOrCreate(newDirectory);
-            renameFile(this.directoryPath + "/" + Constants.ActiveFilePath, newDirectory + "/" + newName + ".data");
-
+            String activeFilePath= this.directoryPath + "/" + Constants.ActiveFileName;
+            String activeNewNamePath = directoryPath + "/" + newName + ".data";
+            String activeNewNamePathCopy = directoryPath + "/" + newName + "copy"+".data";
+            renameFile(activeFilePath,activeNewNamePath );
+            checkFileExistsOrCreate(activeNewNamePathCopy);
             this.changeKeyDirEntries(newName);
-
-            // step 3 TODO when doing compaction part
+            // step 3
+            handleCopyingInADifferentThread(activeNewNamePath,activeNewNamePathCopy);
 
             // step 4
-            createActiveFile(activeDirectoryPath);
+            createActiveFile(directoryPath);
 
             //step 5
             this.currentDataFiles += 1;
 
-            //step 6 TODO
+            //step 6
             if (this.currentDataFiles > this.MAX_DATA_FILES) {
-                // TODO COMPACTION
+                handleStartingMerging(directoryPath);
             }
         }
 
+    }
+
+    private void handleStartingMerging(String path ){
+        Thread thread = new Thread(()->{
+            try {
+                merge(path);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        thread.start();
+    }
+
+    private void handleCopyingInADifferentThread(String oldPath,String newPath){
+        Thread thread = new Thread(() -> {
+            try {
+                copy(oldPath,newPath);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+        });
+        thread.start();
     }
 
     /***
@@ -163,17 +179,16 @@ public class Bitcask {
     private void changeKeyDirEntries(String newName) {
         for (var key : this.keyDir.keySet()) {
             var cur = this.keyDir.get(key);
-            if (Objects.equals(cur.getFileID(), Constants.ActiveFilePath)) {
-                cur.setFileID(Constants.OldDirectoryName + "/" + newName + ".data");
+            if (Objects.equals(cur.getFileID(), directoryPath + "/active.data")) {
+                cur.setFileID(directoryPath + "/" + newName + ".data");
             }
         }
     }
 
-    // TODO change file id of records in active file to old file
-    //  continue rebuild key directory
+
     private void rebuildKeyDirectory(List<String> oldFilesNames) throws IOException {
-        String active = directoryPath + "/" + Constants.ActiveFilePath;
-        this.rebuildKeyDirFromFile(active, Constants.ActiveFilePath, false);
+        String active = directoryPath + "/active.data";
+        this.rebuildKeyDirFromFile(active, false);
 
         //rebuild from old directory
         Map<String, Integer> fileNameCount = new HashMap<>();
@@ -182,6 +197,7 @@ public class Bitcask {
 
         // Count the occurrences of each filename
         for (String fileName : oldFilesNames) {
+            if(fileName.contains("copy")) continue;
             fileNameCount.put(fileName.split("\\.")[0], fileNameCount.getOrDefault(fileName.split("\\.")[0], 0) + 1);
         }
 
@@ -196,16 +212,16 @@ public class Bitcask {
 
         //rebuild from dataFiles
         for (String file : dataFiles) {
-            String fileID = Constants.OldDirectoryName + "/" + file + ".data";
+            String fileID =  file + ".data";
             String dataFile = directoryPath + "/" + fileID;
-            this.rebuildKeyDirFromFile(dataFile, fileID, false);
+            this.rebuildKeyDirFromFile(dataFile, false);
         }
 
         //rebuild from hintFiles
         for (String file : hintFiles) {
-            String fileID = Constants.OldDirectoryName + "/" + file + ".data";
+            String fileID =  file + ".data";
             String dataFile = directoryPath + "/" + fileID;
-            this.rebuildKeyDirFromFile(dataFile, fileID, true);
+            this.rebuildKeyDirFromFile(dataFile, true);
         }
     }
 
@@ -214,7 +230,7 @@ public class Bitcask {
      * @param filePath the patch to the file to build from it
      * @param hint to identify if the file is hint file or not
      */
-    private void rebuildKeyDirFromFile(String filePath, String fileID, boolean hint) throws IOException {
+    private void rebuildKeyDirFromFile(String filePath, boolean hint) throws IOException {
         HashMap<ByteArrayWrapper, Long> timeStamp = new HashMap<>();
         RandomAccessFile activeReader = new RandomAccessFile(filePath, "r");
 
@@ -232,25 +248,32 @@ public class Bitcask {
                 timeStamp.put(keyWrapper, ts);
                 if (!hint) {
                     int offset = (int) activeReader.getFilePointer();
-                    KeyDirEntry pointer = new KeyDirEntry(fileID, valueSize, offset, ts);
+                    KeyDirEntry pointer = new KeyDirEntry(filePath, valueSize, offset, ts);
                     this.keyDir.put(keyWrapper, pointer);
                 } else {
                     int offset = activeReader.readInt();
-                    KeyDirEntry pointer = new KeyDirEntry(fileID, valueSize, offset, ts);
+                    KeyDirEntry pointer = new KeyDirEntry(filePath, valueSize, offset, ts);
                     this.keyDir.put(keyWrapper, pointer);
                 }
             }
             if (!hint)
                 activeReader.skipBytes(valueSize);
         }
+
     }
 
-    private void createHintFile(String fileNewName) throws IOException {
-        String hintFile = directoryPath + "/" + Constants.OldDirectoryName + "/" + fileNewName + ".hint";
-        this.checkFileExistsOrCreate(hintFile);
+    /**
+     *
+     * @param fileNewPathStr a data file PATH that ends with .data
+     * @throws IOException
+     */
+    private void createHintFile(String fileNewPathStr) throws IOException {
+        String hintFilePath = fileNewPathStr.split("\\.data")[0] + ".hint";
 
-        RandomAccessFile dataReader = new RandomAccessFile(directoryPath + "/" + Constants.ActiveFilePath, "r");
-        RandomAccessFile hintReader = new RandomAccessFile(hintFile, "r");
+        this.checkFileExistsOrCreate(hintFilePath);
+
+        RandomAccessFile dataReader = new RandomAccessFile(fileNewPathStr, "r");
+        RandomAccessFile hintReader = new RandomAccessFile(hintFilePath, "rw");
 
         HashMap<ByteArrayWrapper, Long> timeStamp = new HashMap<>();
         long ts = dataReader.readLong();
@@ -262,7 +285,6 @@ public class Bitcask {
             ByteArrayWrapper keyWrapper = new ByteArrayWrapper(key);
             if (!timeStamp.containsKey(keyWrapper) || timeStamp.get(keyWrapper) < ts) {
                 timeStamp.put(keyWrapper, ts);
-
                 hintReader.write(new BitcaskHintRecord(ts, key, (int) dataReader.getFilePointer(), valueSize).getHintRecordBytes());
             }
             dataReader.skipBytes(valueSize);
@@ -273,8 +295,145 @@ public class Bitcask {
         hintReader.close();
     }
 
-    public void merge(String directoryName) {
+    public void merge(String fullDirectory) throws IOException {
         // TODO
+        // create new compactionKeyDir
+        Hashtable<ByteArrayWrapper,KeyDirEntry> compressionKeyDir = new Hashtable<>();
+        getMostRecentKeyDirForCompression(compressionKeyDir);
+        String compressedFullPath = fullDirectory + "/" +generateFileId()+"compressed.data";
+        String compressedCopyPath = fullDirectory + "/" +generateFileId()+ "compressedcopy.data";
+        checkFileExistsOrCreate(compressedFullPath);
+        keyDir = writeCompressedFile(compressedFullPath,compressionKeyDir);
+        copy(compressedFullPath,compressedCopyPath);
+        createHintFile(compressedFullPath);
+        /*
+            At this point the following should've been achieved
+            - created new hash table containing the same as keyDir but with changing the mode to read from copies
+            - made new file in the same directory named xxxxxxxxxcompressed.data where the xs are numbers
+            - write the info from the duplicate keyDir to the file and updated the keyDir to make new reads from the compressed
+            - create hint file
+
+
+            At this point the directory should look like the following
+            bitcask/
+                   active.data
+                   xxxxxxxxxxx1.data x
+                   xxxxxxxxxxx1copy.data x // TODO
+                   xxxxxxxxxxx2.data        x
+                   xxxxxxxxxxx2copy.data    x
+                   xxxxxxxxxxx5compressed.data
+                   xxxxxxxxxxx5compressedcopy.data //TODO
+                   xxxxxxxxxxx5compressed.hint
+
+                  NOW WE ADDRESS THE FOLLOWING,
+                  1/ handle creating copies TODO
+                  2/ recheck the previous code TODO
+                  3/ plan the replacement
+                  4/ delete any file that doesn't contain compressed or active DONE
+
+         */
+
+        // deleting
+        deleteNonCompressedFiles(fullDirectory);
+
+    }
+
+    private void deleteNonCompressedFiles(String parentDirectory) throws IOException {
+
+        List<String> files = getFilesNames(parentDirectory);
+        for(String file : files){
+            if(file.contains("active") || file.contains("compressed")) continue;
+            Path path = Paths.get(parentDirectory + "/" + file);
+            // Delete the file
+            Files.delete(path);
+        }
+
+
+    }
+
+    private void copy(String source,String destination) throws IOException {
+        Path sourceFile = Paths.get(source);
+        Path destinationFile = Paths.get(destination);
+
+        // Copy the file from source to destination
+        Files.copy(sourceFile, destinationFile);
+
+    }
+
+    private Hashtable<ByteArrayWrapper,KeyDirEntry> writeCompressedFile
+                        (String fileFullPath, Hashtable<ByteArrayWrapper,KeyDirEntry> modifiedKeyDir) throws IOException {
+        RandomAccessFile compressedFile = new RandomAccessFile(fileFullPath,"rw");
+        Hashtable<ByteArrayWrapper,KeyDirEntry> afterCompressionKeyDir = new Hashtable<>();
+        for(Map.Entry<ByteArrayWrapper, KeyDirEntry> entry : modifiedKeyDir.entrySet()){
+            ByteArrayWrapper keyWrapper = entry.getKey();
+            KeyDirEntry info = entry.getValue();
+
+
+            int valuesz = info.getValueSz();
+            int startPos = info.getValuePos();
+            long timestamp = info.getTimestamp();
+            String realPositionFileID = info.getFileID();
+
+            RandomAccessFile file = new RandomAccessFile(realPositionFileID,"r");
+            file.seek(startPos);
+            byte[] valueBytes = new byte[valuesz];
+            file.readFully(valueBytes);
+            byte[] keyBytes = keyWrapper.getBytes();
+
+            // CREATE THE NEW KEYDIR
+
+            KeyDirEntry newEntryAfterCompaction = new KeyDirEntry(
+                    fileFullPath,
+                    valuesz,
+                    (int) (compressedFile.getFilePointer()+BitcaskPersistedRecord.getBeforeValueBytes(keyBytes.length)),
+                    timestamp
+            );
+            afterCompressionKeyDir.put(keyWrapper,newEntryAfterCompaction);
+            compressedFile.write((new BitcaskPersistedRecord(System.currentTimeMillis(),keyBytes,valueBytes)).getRecordBytes());
+        }
+        return afterCompressionKeyDir;
+    }
+
+    private void getMostRecentKeyDirForCompression(Hashtable<ByteArrayWrapper,KeyDirEntry> newKeyDir){
+        for (Map.Entry<ByteArrayWrapper, KeyDirEntry> entry : keyDir.entrySet()) {
+            // so the original place for the data was
+            // bitcask/id.data
+            String newFileID = entry.getValue().getFileID().split("\\.data")[0] + "copy.data";
+            KeyDirEntry newEntryVal = new KeyDirEntry( newFileID,
+                                                      entry.getValue().getValueSz(),
+                                                      entry.getValue().getValuePos(),
+                                                      entry.getValue().getTimestamp());
+            newKeyDir.put(entry.getKey(),newEntryVal);
+        }
+    }
+
+
+    /**
+     * This function reads a certain file and modifies given KeyDir that is used for compaction
+     * It stores in the keyDir the most recent reference
+     * FOR BACKUP PURPOSES IF I DON'T USE ORIGINAL KEY DIR, THIS FUNCTION WILL RELY COMPLETELY ON THE REPLICAS
+     * @param path
+     * @param currKeyDir
+     * @throws IOException
+     */
+    private void processFileBeforeCompaction(String path,Hashtable<ByteArrayWrapper,KeyDirEntry> currKeyDir) throws IOException {
+        RandomAccessFile file = new RandomAccessFile(path,"r");
+        while (file.getFilePointer() < file.length()) {
+            long ts = file.readLong();
+            int keySize = file.readInt();
+            int valueSize = file.readInt();
+            byte[] key = new byte[keySize];
+            file.readFully(key);
+            ByteArrayWrapper keyWrapper = new ByteArrayWrapper(key);
+
+            if (!currKeyDir.containsKey(keyWrapper) || currKeyDir.get(keyWrapper).getTimestamp() < ts) {
+                //if more recent or doesn't exist
+                int positionInFile = (int) file.getFilePointer();
+                KeyDirEntry entry = new KeyDirEntry(path,valueSize,positionInFile,ts);
+                currKeyDir.put(keyWrapper,entry);
+            }
+            file.skipBytes(valueSize);
+        }
 
     }
 
@@ -346,7 +505,7 @@ public class Bitcask {
     /***
      * check Directory Exist Or Create it
      * @param directoryPath
-     * @return true if the directory already exist and false if it isn't exist and we created it
+     * @return true if the directory already exist and false if it isn't exist, and we created it
      * @throws FileSystemException
      */
     private boolean checkDirectoryExistOrCreate(String directoryPath) throws FileSystemException {

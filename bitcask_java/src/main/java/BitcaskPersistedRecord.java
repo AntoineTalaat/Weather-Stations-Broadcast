@@ -11,6 +11,13 @@ public class BitcaskPersistedRecord {
         this.value = valueBytes;
     }
 
+    public static int getBeforeValueBytes(int keySize){
+        return Long.BYTES //for timestamp
+            +  Integer.BYTES // for keySz
+            +  Integer.BYTES // for valSz
+            +  keySize;
+    }
+
     /**
      * @return record to be persisted on disk that has the following format
      * tstamp | keysize | valuesize | key | value
@@ -39,4 +46,7 @@ public class BitcaskPersistedRecord {
         System.arraycopy(array2, 0, result, length1, length2);
         return result;
     }
+
+
+
 }
