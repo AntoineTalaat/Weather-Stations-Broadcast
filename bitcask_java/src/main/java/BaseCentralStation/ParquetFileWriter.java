@@ -16,13 +16,11 @@ import org.apache.spark.sql.types.StructType;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystemException;
+import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Hashtable;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 public class ParquetFileWriter {
     private static List<StationMessage> messages;
@@ -58,11 +56,18 @@ public class ParquetFileWriter {
                 Hashtable<String,List<StationMessage>> map = new Hashtable<>();
                 for(StationMessage message:messages){ // iterate the 10k messages
                     long unixTimestamp = message.status_timestamp;
-                    LocalDateTime dateTime = LocalDateTime.ofInstant(Instant.ofEpochSecond(unixTimestamp), ZoneId.systemDefault());
-                    String dateStr = baseFile + "\\" + dateTime.getYear()+  "-" +dateTime.getMonth() + "-" + dateTime.getDayOfMonth() ;
+//                    LocalDateTime dateTime = LocalDateTime.ofInstant(Instant.ofEpochSecond(unixTimestamp), ZoneId.systemDefault());
+                    Date date = new Date(unixTimestamp);
+
+                    // Format the date to extract year, month, and day
+                    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+                    String formattedDate = dateFormat.format(date);
+                    String dateStr = baseFile + "\\" + formattedDate ;
                     boolean dayDirectoryExists = false;
                     try {dayDirectoryExists = checkDirectoryExistOrCreate(dateStr);} catch (FileSystemException e) {e.printStackTrace();}
-                    for(int i=1;i<10;i++) map.put(dateStr+"/"+i,new ArrayList<>()); // create the stations empty entries
+                    if(!dayDirectoryExists)
+                        for(int i=1;i<10;i++)
+                            map.put(dateStr+"/"+i,new ArrayList<>()); // create the stations empty entries
 
                     String stationIDStr = dateStr + "/" + message.station_id;
                     map.get(stationIDStr).add(message);
@@ -73,18 +78,18 @@ public class ParquetFileWriter {
                     // key is the directory file, value is a list of messages
                     // we need a name for the file
                     // to ensure the files are ordered in a reasonable way, we will use timestamp
-                    long placementTimestamp = System.currentTimeMillis();
-                    String newParquetFileName = key + "/" + placementTimestamp + ".parquet";
-                    System.out.println(newParquetFileName);
 
-                    Path path = new Path(newParquetFileName);
-                    System.out.println(path.getName());
-                    System.out.println(path.getParent().getParent().getParent().getParent().getName());
-                    // write
-                    try {
-                        writeToParquetAux(newParquetFileName,list);
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                    if(!list.isEmpty()){
+                        long placementTimestamp = System.currentTimeMillis();
+                        String newParquetFileName = key + "/" + placementTimestamp + ".parquet";
+                        // write
+                        try {
+                            System.out.println(list.get(0).station_id +"-" + list.get(0).status_timestamp );
+                            writeToParquetAux(newParquetFileName,list);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+
                     }
                 });
 
@@ -104,8 +109,10 @@ public class ParquetFileWriter {
                     .withCompressionCodec(CompressionCodecName.SNAPPY)
                     .withSchema(schema)
                     .build();
+        System.out.println("HERE >>>> "+list.size());
                 for(StationMessage m : list){
                     writer.write(m.getGenericRecord(schema));
+                    System.out.println("Written");
                 }
                 writer.close();
 
