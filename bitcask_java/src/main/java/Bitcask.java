@@ -235,8 +235,6 @@ public class Bitcask {
         RandomAccessFile activeReader = new RandomAccessFile(filePath, "r");
 
         //rebuild from active file
-        System.out.println(activeReader.getFilePointer());
-        System.out.println(activeReader.length());
         while (activeReader.getFilePointer() < activeReader.length()) {
             long ts = activeReader.readLong();
             int keySize = activeReader.readInt();
@@ -278,8 +276,8 @@ public class Bitcask {
         RandomAccessFile hintReader = new RandomAccessFile(hintFilePath, "rw");
 
         HashMap<ByteArrayWrapper, Long> timeStamp = new HashMap<>();
-        long ts = dataReader.readLong();
-        while (ts != 0) {
+        while (dataReader.getFilePointer() < dataReader.length()) {
+            long ts = dataReader.readLong();
             int keySize = dataReader.readInt();
             int valueSize = dataReader.readInt();
             byte[] key = new byte[keySize];
@@ -290,8 +288,6 @@ public class Bitcask {
                 hintReader.write(new BitcaskHintRecord(ts, key, (int) dataReader.getFilePointer(), valueSize).getHintRecordBytes());
             }
             dataReader.skipBytes(valueSize);
-
-            ts = dataReader.readLong();
         }
         dataReader.close();
         hintReader.close();
@@ -442,7 +438,6 @@ public class Bitcask {
             }
             file.skipBytes(valueSize);
         }
-
     }
 
 

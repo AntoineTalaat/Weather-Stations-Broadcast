@@ -11,23 +11,22 @@ public class BitcaskHintRecord {
     private final int valueSize;
     private final byte[] key;
 
-    public BitcaskHintRecord(long timestamp,  byte[] keyBytes,int offset, int valueSize) {
+    public BitcaskHintRecord(long timestamp, byte[] keyBytes, int offset, int valueSize) {
         this.timestamp = timestamp;
         this.pos = offset;
         this.key = keyBytes;
-        this.valueSize = valueSize ;
+        this.valueSize = valueSize;
     }
 
     public byte[] getHintRecordBytes() {
         byte[] timestampBytes = ByteBuffer.allocate(Constants.TimeStampSize).putLong(this.timestamp).array();
         byte[] keySizeBytes = ByteBuffer.allocate(Constants.KeySize).putInt(this.key.length).array();
-        byte[] valuePosBytes = ByteBuffer.allocate(Constants.ValueOffsetSize).putLong(this.pos).array();
-        byte[] valueSizeBytes = ByteBuffer.allocate(Constants.ValueSize).putLong(this.valueSize).array();
-
+        byte[] valuePosBytes = ByteBuffer.allocate(Constants.ValueOffsetSize).putInt(this.pos).array();
+        byte[] valueSizeBytes = ByteBuffer.allocate(Constants.ValueSize).putInt(this.valueSize).array();
         // we have key bytes
         // we have value bytes
 
-        byte[] result ;
+        byte[] result;
         result = this.concatenateByteArrays(timestampBytes, keySizeBytes);
         result = this.concatenateByteArrays(result, valueSizeBytes);
         result = this.concatenateByteArrays(result, this.key);
