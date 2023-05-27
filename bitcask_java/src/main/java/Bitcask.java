@@ -300,7 +300,12 @@ public class Bitcask {
         // TODO
         // create new compactionKeyDir
         Hashtable<ByteArrayWrapper,KeyDirEntry> compressionKeyDir = new Hashtable<>();
-        getMostRecentKeyDirForCompression(compressionKeyDir);
+//        getMostRecentKeyDirForCompression(compressionKeyDir);
+        List<String> fileNames = getFilesNames(fullDirectory);
+        for(String file:fileNames){
+            if(file.contains("active") || !file.contains("copy")) continue;
+            processFileBeforeCompaction(fullDirectory+ FileSystems.getDefault().getSeparator() + file,compressionKeyDir);
+        }
         String compressedFullPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+"compressed.data";
         String compressedCopyPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+ "compressedcopy.data";
         checkFileExistsOrCreate(compressedFullPath);
