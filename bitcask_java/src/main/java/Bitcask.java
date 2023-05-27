@@ -1,4 +1,5 @@
 import BaseCentralStation.StationMessage;
+import org.apache.commons.io.FileUtils;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -59,13 +60,13 @@ public class Bitcask {
 
         this.checkDirectoryExistOrCreate(this.directoryPath);
         // get the names of the folders in the directory
-        List<String> folderNames = getFolderNames(directoryPath);
+        List<String> fileNames = getFilesNames(directoryPath);
         this.createActiveFile(directoryPath);
 
         this.keyDir = new Hashtable<>();
 
         List<String> oldFilesNames = getFilesNames(directoryPath);
-        this.rebuildKeyDirectory(oldFilesNames);
+        if(!fileNames.isEmpty()) this.rebuildKeyDirectory(oldFilesNames);
 
     }
 
@@ -260,7 +261,7 @@ public class Bitcask {
             if (!hint)
                 activeReader.skipBytes(valueSize);
         }
-
+        activeReader.close();
     }
 
     /**
@@ -451,14 +452,15 @@ public class Bitcask {
         return timestamp + "-" + uuid;
     }
 
-    private void renameFile(String oldFilePath, String newFilePath) throws FileSystemException {
+    private void renameFile(String oldFilePath, String newFilePath) throws IOException {
         File oldFile = new File(oldFilePath);
         File newFile = new File(newFilePath);
         // Rename the file
-        boolean isRenamed = oldFile.renameTo(newFile);
+//        boolean isRenamed = oldFile.renameTo(newFile);
+        FileUtils.moveFile(oldFile,newFile);
 
-        if (!isRenamed)
-            throw new FileSystemException("Failed to rename the file from:" + oldFilePath + " to:" + newFilePath);
+//        if (!isRenamed)
+//            throw new FileSystemException("Failed to rename the file from:" + oldFilePath + " to:" + newFilePath);
     }
 
     private List<String> getFolderNames(String directoryPath) {
@@ -506,6 +508,7 @@ public class Bitcask {
                 throw new FileSystemException("File not found, Failed to create file at: " + filePath);
             return true;
         }
+
         return false;
     }
 
