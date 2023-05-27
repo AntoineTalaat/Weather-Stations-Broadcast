@@ -1,14 +1,9 @@
-import BaseCentralStation.StationMessage;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.*;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.*;
 
 public class Bitcask {
@@ -133,7 +128,7 @@ public class Bitcask {
 //            checkFileExistsOrCreate(activeNewNamePathCopy);
             this.changeKeyDirEntries(newName);
             // step 3
-            handleCopyingInADifferentThread(activeNewNamePath,activeNewNamePathCopy);
+            var copyThread = openCopyThread(activeNewNamePath,activeNewNamePathCopy);
 
             // step 4
             createActiveFile(directoryPath);
@@ -143,13 +138,13 @@ public class Bitcask {
 
             //step 6
             if (this.currentDataFiles > this.MAX_DATA_FILES) {
-                handleStartingMerging(directoryPath);
+                startingMerging(directoryPath, copyThread);
             }
         }
 
     }
 
-    private void handleStartingMerging(String path ){
+    private void startingMerging(String path , Thread copyThread) throws InterruptedException {
         Thread thread = new Thread(()->{
             try {
                 merge(path);
@@ -157,10 +152,11 @@ public class Bitcask {
                 e.printStackTrace();
             }
         });
+        copyThread.join();
         thread.start();
     }
 
-    private void handleCopyingInADifferentThread(String oldPath,String newPath){
+    private Thread openCopyThread(String oldPath, String newPath){
         Thread thread = new Thread(() -> {
             try {
                 copy(oldPath,newPath);
@@ -170,6 +166,7 @@ public class Bitcask {
 
         });
         thread.start();
+        return thread;
     }
 
     /***
@@ -301,6 +298,7 @@ public class Bitcask {
         List<String> fileNames = getFilesNames(fullDirectory);
         for(String file:fileNames){
             if(file.contains("active") || !file.contains("copy")) continue;
+            System.out.println(fullDirectory+ FileSystems.getDefault().getSeparator() + file);
             processFileBeforeCompaction(fullDirectory+ FileSystems.getDefault().getSeparator() + file,compressionKeyDir);
         }
         String compressedFullPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+"compressed.data";
