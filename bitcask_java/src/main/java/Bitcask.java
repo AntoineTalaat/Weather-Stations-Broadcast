@@ -115,10 +115,8 @@ public class Bitcask {
          * 5/increase the number of old files
          * 6 check if compaction is needed
          */
+        offset = this.offset_limit;
         if (offset >= this.offset_limit) {
-            //close the file with zero
-            this.activeWritingFile.writeLong(0);
-
             // the above procedure
             // STEP 1 & 2
             String newName = this.generateFileId();
@@ -127,7 +125,7 @@ public class Bitcask {
             String activeNewNamePath = directoryPath + "/" + newName + ".data";
             String activeNewNamePathCopy = directoryPath + "/" + newName + "copy"+".data";
             renameFile(activeFilePath,activeNewNamePath );
-            checkFileExistsOrCreate(activeNewNamePathCopy);
+//            checkFileExistsOrCreate(activeNewNamePathCopy);
             this.changeKeyDirEntries(newName);
             // step 3
             handleCopyingInADifferentThread(activeNewNamePath,activeNewNamePathCopy);
@@ -187,9 +185,6 @@ public class Bitcask {
 
 
     private void rebuildKeyDirectory(List<String> oldFilesNames) throws IOException {
-        String active = directoryPath + "/active.data";
-        this.rebuildKeyDirFromFile(active, false);
-
         //rebuild from old directory
         Map<String, Integer> fileNameCount = new HashMap<>();
         List<String> hintFiles = new ArrayList<>();
@@ -235,6 +230,8 @@ public class Bitcask {
         RandomAccessFile activeReader = new RandomAccessFile(filePath, "r");
 
         //rebuild from active file
+        System.out.println(activeReader.getFilePointer());
+        System.out.println(activeReader.length());
         while (activeReader.getFilePointer() < activeReader.length()) {
             long ts = activeReader.readLong();
             int keySize = activeReader.readInt();
@@ -357,7 +354,6 @@ public class Bitcask {
 
         // Copy the file from source to destination
         Files.copy(sourceFile, destinationFile);
-
     }
 
     private Hashtable<ByteArrayWrapper,KeyDirEntry> writeCompressedFile
