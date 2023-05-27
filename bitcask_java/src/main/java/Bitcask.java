@@ -82,7 +82,7 @@ public class Bitcask {
         byte[] value = new byte[sizeToBeRead];
         reader.seek(offset);
         reader.readFully(value);
-
+        reader.close();
         return value;
     }
 
@@ -308,7 +308,6 @@ public class Bitcask {
         checkFileExistsOrCreate(compressedFullPath);
         keyDir = writeCompressedFile(compressedFullPath,compressionKeyDir);
         copy(compressedFullPath,compressedCopyPath);
-        createHintFile(compressedFullPath);
         /*
             At this point the following should've been achieved
             - created new hash table containing the same as keyDir but with changing the mode to read from copies
@@ -337,15 +336,16 @@ public class Bitcask {
          */
 
         // deleting
-        deleteNonCompressedFiles(fullDirectory);
+        deleteNonCompressedFiles(fullDirectory,compressedFullPath,compressedCopyPath);
+        createHintFile(compressedFullPath);
 
     }
 
-    private void deleteNonCompressedFiles(String parentDirectory) throws IOException {
+    private void deleteNonCompressedFiles(String parentDirectory, String compressedRealFile, String compressedCopyFile) throws IOException {
 
         List<String> files = getFilesNames(parentDirectory);
         for(String file : files){
-            if(file.contains("active") || file.contains("compressed")) continue;
+            if(file.contains("active") || file.equals(compressedCopyFile) || file.equals(compressedRealFile)) continue;
             Path path = Paths.get(parentDirectory + FileSystems.getDefault().getSeparator() + file);
             // Delete the file
             Files.delete(path);
@@ -392,7 +392,9 @@ public class Bitcask {
             );
             afterCompressionKeyDir.put(keyWrapper,newEntryAfterCompaction);
             compressedFile.write((new BitcaskPersistedRecord(System.currentTimeMillis(),keyBytes,valueBytes)).getRecordBytes());
+            file.close();
         }
+        compressedFile.close();
         return afterCompressionKeyDir;
     }
 
