@@ -4,10 +4,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.file.FileSystemException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -57,7 +54,8 @@ public class Bitcask {
      */
     private void openBitcaskFoldersCreatedOrCreateNew() throws IOException {
         // Check parent folder
-        this.directoryPath = this.directoryPath + "/" + Constants.MainDirectoryName;
+        this.directoryPath = this.directoryPath + FileSystems.getDefault().getSeparator() + Constants.MainDirectoryName;
+//        this.directoryPath = this.directoryPath + "/"+ Constants.MainDirectoryName;
 
         this.checkDirectoryExistOrCreate(this.directoryPath);
         // get the names of the folders in the directory
@@ -101,7 +99,7 @@ public class Bitcask {
         int valSize = valueBytes.length;
 
         // normal appending
-        KeyDirEntry pointer = new KeyDirEntry(directoryPath+"/active.data", valSize, (int) offset, placementTimestamp);
+        KeyDirEntry pointer = new KeyDirEntry(directoryPath+FileSystems.getDefault().getSeparator()+"active.data", valSize, (int) offset, placementTimestamp);
         this.activeWritingFile.write(record);
         keyDir.put(key, pointer);
 
@@ -115,15 +113,21 @@ public class Bitcask {
          * 5/increase the number of old files
          * 6 check if compaction is needed
          */
-        offset = this.offset_limit;
         if (offset >= this.offset_limit) {
             // the above procedure
             // STEP 1 & 2
             String newName = this.generateFileId();
 
-            String activeFilePath= this.directoryPath + "/" + Constants.ActiveFileName;
-            String activeNewNamePath = directoryPath + "/" + newName + ".data";
-            String activeNewNamePathCopy = directoryPath + "/" + newName + "copy"+".data";
+            String activeFilePath= this.directoryPath + FileSystems.getDefault().getSeparator()+ "active.data";
+            String activeNewNamePath = directoryPath +FileSystems.getDefault().getSeparator() + newName + ".data";
+            String activeNewNamePathCopy = directoryPath + FileSystems.getDefault().getSeparator()+ newName + "copy"+".data";
+
+
+//
+//            String activeFilePath= this.directoryPath +"/"+ "active.data";
+//            String activeNewNamePath = directoryPath +"/" + newName + ".data";
+//            String activeNewNamePathCopy = directoryPath + "/"+ newName + "copy"+".data";
+            activeWritingFile.close();
             renameFile(activeFilePath,activeNewNamePath );
 //            checkFileExistsOrCreate(activeNewNamePathCopy);
             this.changeKeyDirEntries(newName);
@@ -177,8 +181,8 @@ public class Bitcask {
     private void changeKeyDirEntries(String newName) {
         for (var key : this.keyDir.keySet()) {
             var cur = this.keyDir.get(key);
-            if (Objects.equals(cur.getFileID(), directoryPath + "/active.data")) {
-                cur.setFileID(directoryPath + "/" + newName + ".data");
+            if (Objects.equals(cur.getFileID(), directoryPath + FileSystems.getDefault().getSeparator() +"active.data")) {
+                cur.setFileID(directoryPath + FileSystems.getDefault().getSeparator() + newName + ".data");
             }
         }
     }
@@ -208,14 +212,14 @@ public class Bitcask {
         //rebuild from dataFiles
         for (String file : dataFiles) {
             String fileID =  file + ".data";
-            String dataFile = directoryPath + "/" + fileID;
+            String dataFile = directoryPath + FileSystems.getDefault().getSeparator() + fileID;
             this.rebuildKeyDirFromFile(dataFile, false);
         }
 
         //rebuild from hintFiles
         for (String file : hintFiles) {
             String fileID =  file + ".data";
-            String dataFile = directoryPath + "/" + fileID;
+            String dataFile = directoryPath +FileSystems.getDefault().getSeparator() + fileID;
             this.rebuildKeyDirFromFile(dataFile, true);
         }
     }
@@ -297,8 +301,8 @@ public class Bitcask {
         // create new compactionKeyDir
         Hashtable<ByteArrayWrapper,KeyDirEntry> compressionKeyDir = new Hashtable<>();
         getMostRecentKeyDirForCompression(compressionKeyDir);
-        String compressedFullPath = fullDirectory + "/" +generateFileId()+"compressed.data";
-        String compressedCopyPath = fullDirectory + "/" +generateFileId()+ "compressedcopy.data";
+        String compressedFullPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+"compressed.data";
+        String compressedCopyPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+ "compressedcopy.data";
         checkFileExistsOrCreate(compressedFullPath);
         keyDir = writeCompressedFile(compressedFullPath,compressionKeyDir);
         copy(compressedFullPath,compressedCopyPath);
@@ -340,7 +344,7 @@ public class Bitcask {
         List<String> files = getFilesNames(parentDirectory);
         for(String file : files){
             if(file.contains("active") || file.contains("compressed")) continue;
-            Path path = Paths.get(parentDirectory + "/" + file);
+            Path path = Paths.get(parentDirectory + FileSystems.getDefault().getSeparator() + file);
             // Delete the file
             Files.delete(path);
         }
@@ -360,10 +364,10 @@ public class Bitcask {
                         (String fileFullPath, Hashtable<ByteArrayWrapper,KeyDirEntry> modifiedKeyDir) throws IOException {
         RandomAccessFile compressedFile = new RandomAccessFile(fileFullPath,"rw");
         Hashtable<ByteArrayWrapper,KeyDirEntry> afterCompressionKeyDir = new Hashtable<>();
+
         for(Map.Entry<ByteArrayWrapper, KeyDirEntry> entry : modifiedKeyDir.entrySet()){
             ByteArrayWrapper keyWrapper = entry.getKey();
             KeyDirEntry info = entry.getValue();
-
 
             int valuesz = info.getValueSz();
             int startPos = info.getValuePos();
@@ -394,12 +398,14 @@ public class Bitcask {
         for (Map.Entry<ByteArrayWrapper, KeyDirEntry> entry : keyDir.entrySet()) {
             // so the original place for the data was
             // bitcask/id.data
-            String newFileID = entry.getValue().getFileID().split("\\.data")[0] + "copy.data";
-            KeyDirEntry newEntryVal = new KeyDirEntry( newFileID,
-                                                      entry.getValue().getValueSz(),
-                                                      entry.getValue().getValuePos(),
-                                                      entry.getValue().getTimestamp());
-            newKeyDir.put(entry.getKey(),newEntryVal);
+            if(!entry.getValue().getFileID().contains("active")) {
+                String newFileID = entry.getValue().getFileID().split("\\.data")[0] + "copy.data";
+                KeyDirEntry newEntryVal = new KeyDirEntry(newFileID,
+                        entry.getValue().getValueSz(),
+                        entry.getValue().getValuePos(),
+                        entry.getValue().getTimestamp());
+                newKeyDir.put(entry.getKey(), newEntryVal);
+            }
         }
     }
 
@@ -481,8 +487,8 @@ public class Bitcask {
     }
 
     private void createActiveFile(String activeDirectoryPath) throws IOException {
-        this.checkFileExistsOrCreate(activeDirectoryPath + "/" + Constants.ActiveFileName);
-        this.activeWritingFile = new RandomAccessFile(activeDirectoryPath + "/" + Constants.ActiveFileName, "rw");
+        this.checkFileExistsOrCreate(activeDirectoryPath +FileSystems.getDefault().getSeparator() + Constants.ActiveFileName);
+        this.activeWritingFile = new RandomAccessFile(activeDirectoryPath +FileSystems.getDefault().getSeparator() + Constants.ActiveFileName, "rw");
     }
 
     private boolean checkFileExistsOrCreate(String filePath) throws IOException {
