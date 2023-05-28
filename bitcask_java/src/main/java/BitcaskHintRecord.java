@@ -3,7 +3,9 @@ import java.nio.ByteBuffer;
 
 /**
  * class to store records of hint files such that they are in the format
- * tstamp |  ksz  |  valuesz  | value_pos  |  key
+ * tstamp |  ksz  |  valuesz  | value_pos  |  key xxxx
+ *
+ * tstamp |  ksz  |  valuesz  |    key     | value_pos
  */
 public class BitcaskHintRecord {
     private final long timestamp;

@@ -64,6 +64,15 @@ public class Bitcask {
         this.keyDir = new Hashtable<>();
 
         List<String> oldFilesNames = getFilesNames(directoryPath);
+
+        /**
+         * active.data
+         * 2848228.data
+         * 2848228copy.data
+         * dsgfdhfdhcompressed.data
+ *         * dsgfdhfdhcompressedcopy.data
+         * dsgfdhfdhcompressed.hint
+         */
         if (!fileNames.isEmpty())
             this.rebuildKeyDirectory(oldFilesNames);
 
@@ -231,6 +240,10 @@ public class Bitcask {
             if (fileName.contains("copy"))
                 continue;
             fileNameCount.put(fileName.split("\\.")[0], fileNameCount.getOrDefault(fileName.split("\\.")[0], 0) + 1);
+
+            /*
+            name : count kam mra
+             */
         }
 
         // Identify filenames that are repeated twice to use their hint files and the ones which repeated once
