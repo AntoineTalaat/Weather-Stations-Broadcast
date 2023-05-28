@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Bitcask {
     private String directoryPath;
@@ -14,7 +15,7 @@ public class Bitcask {
     private Thread compactionThread = null;
     private List<String> compacted = null;
     private Thread copyThread = null;
-    private long currentDataFiles = 0;
+    private AtomicInteger currentDataFiles = new AtomicInteger(0);
     private final long MAX_DATA_FILES = 5;
 
     /**
@@ -134,14 +135,17 @@ public class Bitcask {
 //            System.out.println(activeNewNamePathCopy);
             startCopying(activeNewNamePath,activeNewNamePathCopy);
 
+
             // step 4
             createActiveFile(directoryPath);
 
             //step 5
-            this.currentDataFiles += 1;
+            this.currentDataFiles.incrementAndGet();
             System.out.println(currentDataFiles);
+
+            System.out.println("JUST CREATED " + activeNewNamePath);
             //step 6
-            if (this.currentDataFiles > this.MAX_DATA_FILES) {
+            if (this.currentDataFiles.get() > this.MAX_DATA_FILES) {
 
 //                startingMerging(directoryPath, copyThread);
                   startingMerging(directoryPath);
@@ -294,15 +298,15 @@ public class Bitcask {
 
     /**
      *
-     * @param fileNewPathStr a data file PATH that ends with .data
+     * @param dataPathFile a data file PATH that ends with .data
      * @throws IOException
      */
-    private void createHintFile(String fileNewPathStr) throws IOException {
-        String hintFilePath = fileNewPathStr.split("\\.data")[0] + ".hint";
-        System.out.println("CREATING HINT OF " +fileNewPathStr);
+    private void createHintFile(String dataPathFile) throws IOException {
+        String hintFilePath = dataPathFile.split("\\.data")[0] + ".hint";
+//        System.out.println("CREATING HINT OF " +dataPathFile);
         this.checkFileExistsOrCreate(hintFilePath);
 
-        RandomAccessFile dataReader = new RandomAccessFile(fileNewPathStr, "r");
+        RandomAccessFile dataReader = new RandomAccessFile(dataPathFile, "r");
         RandomAccessFile hintReader = new RandomAccessFile(hintFilePath, "rw");
 
         HashMap<ByteArrayWrapper, Long> timeStamp = new HashMap<>();
@@ -330,13 +334,20 @@ public class Bitcask {
 //        getMostRecentKeyDirForCompression(compressionKeyDir);
         ArrayList<String> toBeDeletedFiles = new ArrayList<>();
         List<String> fileNames = getFilesNames(fullDirectory);
+        System.out.println("DoneReadingFiles");
+        this.currentDataFiles.set(1);
         for(String file:fileNames){
+            if(file.contains("hint")) {
+                toBeDeletedFiles.add(fullDirectory+ FileSystems.getDefault().getSeparator()+file);
+                continue;
+            }
             if(file.contains("active") || !file.contains("copy")) continue;
 //            System.out.println(fullDirectory+ FileSystems.getDefault().getSeparator() + file);
             processFileBeforeCompaction(fullDirectory+ FileSystems.getDefault().getSeparator() + file,compressionKeyDir, toBeDeletedFiles);
         }
-        String compressedFullPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+"compressed.data";
-        String compressedCopyPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+ "compressedcopy.data";
+        String uniqueID = generateFileId();
+        String compressedFullPath = fullDirectory + FileSystems.getDefault().getSeparator() +uniqueID+"compressed.data";
+        String compressedCopyPath = fullDirectory + FileSystems.getDefault().getSeparator() +uniqueID+ "compressedcopy.data";
         checkFileExistsOrCreate(compressedFullPath);
         keyDir = writeCompressedFile(compressedFullPath,compressionKeyDir);
         /*
@@ -369,7 +380,8 @@ public class Bitcask {
         deleteNonCompressedFiles(fullDirectory,toBeDeletedFiles);
         createHintFile(compressedFullPath);
         startCopying(compressedFullPath,compressedCopyPath);
-//        System.out.println(compressedFullPath + " -- " + compressedCopyPath);
+        System.out.println(compressedFullPath + " -- " + compressedCopyPath);
+        System.out.println("FINISHED MERGING");
 
     }
 
@@ -383,6 +395,7 @@ public class Bitcask {
 //            Files.delete(path);
 //        }
 
+
         // DELETE COPY FILES
         for (String file : list){
             Path path = Paths.get(  file);
@@ -390,7 +403,9 @@ public class Bitcask {
             Files.delete(path);
         }
 
+        // DELETE ORIGINALS FILE
         for (String fileCopy:list){
+            if(fileCopy.contains("hint")) continue;
             String[] filePart = fileCopy.split("copy");
             String file = filePart[0] + filePart[1];
             Path path = Paths.get(  file);
@@ -476,6 +491,7 @@ public class Bitcask {
     private void processFileBeforeCompaction(String path,Hashtable<ByteArrayWrapper,KeyDirEntry> currKeyDir, List<String> toBeDeleted) throws IOException {
         RandomAccessFile file = new RandomAccessFile(path,"r");
         System.out.println("PROCESSING " + path + " Before Compaction");
+//        if(path.contains("hint")) return;
         toBeDeleted.add(path);
         while (file.getFilePointer() < file.length()) {
             long ts = file.readLong();
