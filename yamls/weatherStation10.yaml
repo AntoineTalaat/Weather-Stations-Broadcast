@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weatherstation10-deployment
+  labels:
+    app: weatherstation10
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: weatherstation10
+  template:
+    metadata:
+      labels:
+        app: weatherstation10
+    spec:
+      containers:
+      - name: weather-station
+        image: omarkhairat/weather-station-seoncd-edition:latest
+        ports:
+        - containerPort: 8093
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: kafka-service:9092
+        - name: CITY
+          value: "10"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: weatherstation10-service
+spec:
+  type: NodePort
+  selector:
+    app: weatherStation10
+  ports:
+    - protocol: TCP
+      port: 8093
+      targetPort: 8093
