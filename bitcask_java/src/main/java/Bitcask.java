@@ -12,11 +12,9 @@ public class Bitcask {
     private RandomAccessFile activeWritingFile;
     private Hashtable<ByteArrayWrapper, KeyDirEntry> keyDir; // TODO
     private final long offset_limit = 10000; // roughly max file size 10 kB
-    private List<String> compacted = null;
-    private Thread copyThread = null;
-    private AtomicInteger currentDataFiles = new AtomicInteger(0);
+    private final AtomicInteger currentDataFiles = new AtomicInteger(0);
     private final long MAX_DATA_FILES = 5;
-    private ArrayDeque<Thread> compactThreads = new ArrayDeque<>();
+    private final ArrayDeque<Thread> compactThreads = new ArrayDeque<>();
 
     /**
      * open new Or existing bitcask datastore
@@ -31,53 +29,41 @@ public class Bitcask {
         this.openBitcaskFoldersCreatedOrCreateNew();
     }
 
-    /**
-     * let's say u want to open a bitcask file at home/userprograms
-     * this function should create new directory home/userprograms/bitcask/
-     * inside that we should have a FOLDER for each segment such that
-     * the folder contains both the data files and the hint file
-     * <p>
-     * this method creates the main directory if it doesn't exist and the active segment file
-     * if the directory exists we should check only if we need the active folder
-     * <p>
-     * The structure should be like that:
-     * home/userprograms/
-     * bitcask --> configurations file ???? TODO
-     * IGNORE /files/ for now
-     * --> files --> active --> active.data
-     * --> active.hint
-     * --> oldFile1 --> oldFile1.data
-     * --> oldFile1.hint
-     * --> replicas
-     * etc
+
+    /***
+     * This function creates the bitcask parent folder in the directory path that was previously set by open()
+     *
+     * it modifies the directory path from "dir" to "dir/bitcask"
+     * then creates the active file if it doesn't exist
+     *
+     * this function also creates the keyDir and load it in case of recovery
+     *
+     *
+     * @throws IOException if active file creation failed, or any
      */
     private void openBitcaskFoldersCreatedOrCreateNew() throws IOException {
         // Check parent folder
         this.directoryPath = this.directoryPath + FileSystems.getDefault().getSeparator() + Constants.MainDirectoryName;
-//        this.directoryPath = this.directoryPath + "/"+ Constants.MainDirectoryName;
 
         this.checkDirectoryExistOrCreate(this.directoryPath);
-        // get the names of the folders in the directory
         List<String> fileNames = getFilesNames(directoryPath);
         this.createActiveFile(directoryPath);
 
         this.keyDir = new Hashtable<>();
 
         List<String> oldFilesNames = getFilesNames(directoryPath);
-
-        /**
-         * active.data
-         * 2848228.data
-         * 2848228copy.data
-         * dsgfdhfdhcompressed.data
- *         * dsgfdhfdhcompressedcopy.data
-         * dsgfdhfdhcompressed.hint
-         */
         if (!fileNames.isEmpty())
             this.rebuildKeyDirectory(oldFilesNames);
 
     }
 
+
+    /***
+     * this function retrieves value bytes from bitcask given the key bytes
+     * @param keyBytes byte representation of the key
+     * @return byte representation of the value
+     * @throws IOException in case of IO error when accessing the files
+     */
     public byte[] get(byte[] keyBytes) throws IOException {
         ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
         if (keyDir.getOrDefault(key,null) == null )
@@ -96,8 +82,15 @@ public class Bitcask {
         return value;
     }
 
-    /*
-     *  when we need to add a record to the bitcask file, we expect to append the entry to the opened active file
+
+    /**
+     * this function puts the value bytes in the bitcask and handles updating the keyDir.
+     * it is responsible for:
+     * closing active file when the offset exceeds certain limit, also creating copy file(replica)
+     * calls another function to start compaction in another thread
+     * @param keyBytes bytes representation of the key
+     * @param valueBytes bytes representation of the value
+     * @throws Exception in case of any error in creating, renaming, copying, reading or writing the files.
      */
     public void put(byte[] keyBytes, byte[] valueBytes) throws Exception {
         ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
@@ -133,17 +126,10 @@ public class Bitcask {
             String activeNewNamePath = directoryPath + FileSystems.getDefault().getSeparator() + newName + ".data";
             String activeNewNamePathCopy = directoryPath + FileSystems.getDefault().getSeparator() + newName + "copy" + ".data";
 
-
-//            String activeFilePath= this.directoryPath +"/"+ "active.data";
-//            String activeNewNamePath = directoryPath +"/" + newName + ".data";
-//            String activeNewNamePathCopy = directoryPath + "/"+ newName + "copy"+".data";
             activeWritingFile.close();
             renameFile(activeFilePath, activeNewNamePath);
-//            checkFileExistsOrCreate(activeNewNamePathCopy);
             this.changeKeyDirEntries(newName);
             // step 3
-//            var copyThread = openCopyThread(activeNewNamePath,activeNewNamePathCopy);
-//            System.out.println(activeNewNamePathCopy);
             startCopying(activeNewNamePath, activeNewNamePathCopy);
 
 
@@ -155,13 +141,8 @@ public class Bitcask {
 
             //step 6
             if (this.currentDataFiles.get() > this.MAX_DATA_FILES) {
-
-//                startingMerging(directoryPath, copyThread);
                 startingMerging(directoryPath);
-
             }
-
-            offset = 0;
         }
 
     }
@@ -186,31 +167,9 @@ public class Bitcask {
     }
 
     private void startCopying(String oldPath, String newPath) throws IOException {
-//        Thread thread = new Thread(() -> {
-//            try {
         copy(oldPath, newPath);
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-
-//        });
-//        thread.start();
-//        return thread;
     }
 
-
-    private Thread openCopyThread(String oldPath, String newPath) {
-        Thread thread = new Thread(() -> {
-            try {
-                copy(oldPath, newPath);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
-        });
-        thread.start();
-        return thread;
-    }
 
     /***
      * this function supposed to change the filesID in keyDirectory from active file to the new File in the old directory
@@ -240,10 +199,6 @@ public class Bitcask {
             if (fileName.contains("copy"))
                 continue;
             fileNameCount.put(fileName.split("\\.")[0], fileNameCount.getOrDefault(fileName.split("\\.")[0], 0) + 1);
-
-            /*
-            name : count kam mra
-             */
         }
 
         // Identify filenames that are repeated twice to use their hint files and the ones which repeated once
@@ -314,7 +269,6 @@ public class Bitcask {
      */
     private void createHintFile(String dataPathFile) throws IOException {
         String hintFilePath = dataPathFile.split("\\.data")[0] + ".hint";
-//        System.out.println("CREATING HINT OF " +dataPathFile);
         this.checkFileExistsOrCreate(hintFilePath);
 
         RandomAccessFile dataReader = new RandomAccessFile(dataPathFile, "r");
@@ -352,7 +306,6 @@ public class Bitcask {
                 continue;
             }
             if (file.contains("active") || !file.contains("copy")) continue;
-//            System.out.println(fullDirectory+ FileSystems.getDefault().getSeparator() + file);
             processFileBeforeCompaction(fullDirectory + FileSystems.getDefault().getSeparator() + file, compressionKeyDir, toBeDeletedFiles);
         }
         String uniqueID = generateFileId();
@@ -360,32 +313,6 @@ public class Bitcask {
         String compressedCopyPath = fullDirectory + FileSystems.getDefault().getSeparator() + uniqueID + "compressedcopy.data";
         checkFileExistsOrCreate(compressedFullPath);
         keyDir = writeCompressedFile(compressedFullPath, compressionKeyDir);
-        /*
-            At this point the following should've been achieved
-            - created new hash table containing the same as keyDir but with changing the mode to read from copies
-            - made new file in the same directory named xxxxxxxxxcompressed.data where the xs are numbers
-            - write the info from the duplicate keyDir to the file and updated the keyDir to make new reads from the compressed
-            - create hint file
-
-            At this point the directory should look like the following
-            bitcask/
-                   active.data
-                   xxxxxxxxxxx1.data x
-                   xxxxxxxxxxx1copy.data x // TODO
-                   xxxxxxxxxxx2.data        x
-                   xxxxxxxxxxx2copy.data    x
-                   xxxxxxxxxxx5compressed.data
-                   xxxxxxxxxxx5compressedcopy.data //TODO
-                   xxxxxxxxxxx5compressed.hint
-
-                  NOW WE ADDRESS THE FOLLOWING,
-                  1/ handle creating copies TODO
-                  2/ recheck the previous code TODO
-                  3/ plan the replacement
-                  4/ delete any file that doesn't contain compressed or active DONE
-
-         */
-
         // deleting
         deleteNonCompressedFiles(fullDirectory, toBeDeletedFiles);
         createHintFile(compressedFullPath);
@@ -396,13 +323,6 @@ public class Bitcask {
     private void deleteNonCompressedFiles(String parentDirectory, List<String> list) throws IOException {
 
         List<String> files = getFilesNames(parentDirectory);
-//        for(String file : files){
-//            if(file.contains("active") ||  file.equals(compressedRealFile)) continue;
-//            Path path = Paths.get(parentDirectory + FileSystems.getDefault().getSeparator() + file);
-//            // Delete the file
-//            Files.delete(path);
-//        }
-
 
         // DELETE COPY FILES
         for (String file : list) {
@@ -419,16 +339,12 @@ public class Bitcask {
             Files.delete(path);
         }
 
-        list = new ArrayList<>();
-
 
     }
 
     private void copy(String source, String destination) throws IOException {
         Path sourceFile = Paths.get(source);
         Path destinationFile = Paths.get(destination);
-//        System.out.println("COPY " + source + " >> " + destination);
-        // Copy the file from source to destination
         Files.copy(sourceFile, destinationFile);
     }
 
@@ -470,8 +386,6 @@ public class Bitcask {
 
     private void getMostRecentKeyDirForCompression(Hashtable<ByteArrayWrapper, KeyDirEntry> newKeyDir) {
         for (Map.Entry<ByteArrayWrapper, KeyDirEntry> entry : keyDir.entrySet()) {
-            // so the original place for the data was
-            // bitcask/id.data
             if (!entry.getValue().getFileID().contains("active")) {
                 String newFileID = entry.getValue().getFileID().split("\\.data")[0] + "copy.data";
                 KeyDirEntry newEntryVal = new KeyDirEntry(newFileID,
