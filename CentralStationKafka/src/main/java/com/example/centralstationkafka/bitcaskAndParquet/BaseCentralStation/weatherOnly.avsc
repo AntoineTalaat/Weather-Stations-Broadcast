@@ -1,0 +1,18 @@
+{
+    "type": "record",
+    "name": "Weather",
+    "namespace": "ca.dataedu",
+    "fields": [{
+                "name": "humidity",
+                "type": ["null", "int"],
+                "default": null
+            }, {
+                "name": "temperature",
+                "type": ["null", "int"],
+                "default": null
+            }, {
+                "name": "wind_speed",
+                "type": ["null", "int"],
+                "default": null
+            }]
+}
