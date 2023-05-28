@@ -12,6 +12,7 @@ public class Bitcask {
     private Hashtable<ByteArrayWrapper, KeyDirEntry> keyDir; // TODO
     private final long offset_limit = 10000; // roughly max file size 10 kB
     private Thread compactionThread = null;
+    private List<String> compacted = null;
     private Thread copyThread = null;
     private long currentDataFiles = 0;
     private final long MAX_DATA_FILES = 5;
@@ -130,6 +131,7 @@ public class Bitcask {
             this.changeKeyDirEntries(newName);
             // step 3
 //            var copyThread = openCopyThread(activeNewNamePath,activeNewNamePathCopy);
+//            System.out.println(activeNewNamePathCopy);
             startCopying(activeNewNamePath,activeNewNamePathCopy);
 
             // step 4
@@ -137,13 +139,16 @@ public class Bitcask {
 
             //step 5
             this.currentDataFiles += 1;
-
+            System.out.println(currentDataFiles);
             //step 6
             if (this.currentDataFiles > this.MAX_DATA_FILES) {
+
 //                startingMerging(directoryPath, copyThread);
                   startingMerging(directoryPath);
 
             }
+
+            offset = 0;
         }
 
     }
@@ -151,8 +156,10 @@ public class Bitcask {
     private void startingMerging(String path ) throws InterruptedException {
 //        while (copyThread != null);
         if(compactionThread == null){
+            System.out.println("inMerging");
             this.compactionThread = new Thread(()->{
                 try {
+                    compacted = new ArrayList<>();
                     merge(path);
                     compactionThread = null;
                 } catch (IOException e) {
@@ -292,7 +299,7 @@ public class Bitcask {
      */
     private void createHintFile(String fileNewPathStr) throws IOException {
         String hintFilePath = fileNewPathStr.split("\\.data")[0] + ".hint";
-
+        System.out.println("CREATING HINT OF " +fileNewPathStr);
         this.checkFileExistsOrCreate(hintFilePath);
 
         RandomAccessFile dataReader = new RandomAccessFile(fileNewPathStr, "r");
@@ -331,8 +338,6 @@ public class Bitcask {
         String compressedCopyPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+ "compressedcopy.data";
         checkFileExistsOrCreate(compressedFullPath);
         keyDir = writeCompressedFile(compressedFullPath,compressionKeyDir);
-        startCopying(compressedFullPath,compressedCopyPath);
-        System.out.println(compressedFullPath + " -- " + compressedCopyPath);
         /*
             At this point the following should've been achieved
             - created new hash table containing the same as keyDir but with changing the mode to read from copies
@@ -360,28 +365,34 @@ public class Bitcask {
          */
 
         // deleting
-        deleteNonCompressedFiles(fullDirectory,compressedFullPath,compressedCopyPath);
+        deleteNonCompressedFiles(fullDirectory,compressedFullPath);
         createHintFile(compressedFullPath);
+        startCopying(compressedFullPath,compressedCopyPath);
+//        System.out.println(compressedFullPath + " -- " + compressedCopyPath);
 
     }
 
-    private void deleteNonCompressedFiles(String parentDirectory, String compressedRealFile, String compressedCopyFile) throws IOException {
+    private void deleteNonCompressedFiles(String parentDirectory, String compressedRealFile) throws IOException {
 
         List<String> files = getFilesNames(parentDirectory);
-        for(String file : files){
-            if(file.contains("active") || file.equals(compressedCopyFile) || file.equals(compressedRealFile)) continue;
-            Path path = Paths.get(parentDirectory + FileSystems.getDefault().getSeparator() + file);
-            // Delete the file
+//        for(String file : files){
+//            if(file.contains("active") ||  file.equals(compressedRealFile)) continue;
+//            Path path = Paths.get(parentDirectory + FileSystems.getDefault().getSeparator() + file);
+//            // Delete the file
+//            Files.delete(path);
+//        }
+        for (String file : compacted){
+            Path path = Paths.get(  file);
+            System.out.println("DELETE "+file);
             Files.delete(path);
         }
-
 
     }
 
     private void copy(String source,String destination) throws IOException {
         Path sourceFile = Paths.get(source);
         Path destinationFile = Paths.get(destination);
-
+//        System.out.println("COPY " + source + " >> " + destination);
         // Copy the file from source to destination
         Files.copy(sourceFile, destinationFile);
     }
@@ -401,6 +412,7 @@ public class Bitcask {
             String realPositionFileID = info.getFileID();
 
             RandomAccessFile file = new RandomAccessFile(realPositionFileID,"r");
+            System.out.println("Reading For Compression " + realPositionFileID);
             file.seek(startPos);
             byte[] valueBytes = new byte[valuesz];
             file.readFully(valueBytes);
@@ -416,6 +428,7 @@ public class Bitcask {
             );
             afterCompressionKeyDir.put(keyWrapper,newEntryAfterCompaction);
             compressedFile.write((new BitcaskPersistedRecord(System.currentTimeMillis(),keyBytes,valueBytes)).getRecordBytes());
+            System.out.println("WRITING TO IN COMPRESS "+ fileFullPath);
             file.close();
         }
         compressedFile.close();
@@ -448,6 +461,8 @@ public class Bitcask {
      */
     private void processFileBeforeCompaction(String path,Hashtable<ByteArrayWrapper,KeyDirEntry> currKeyDir) throws IOException {
         RandomAccessFile file = new RandomAccessFile(path,"r");
+        System.out.println("PROCESSING " + path + " Before Compaction");
+        compacted.add(path);
         while (file.getFilePointer() < file.length()) {
             long ts = file.readLong();
             int keySize = file.readInt();
@@ -464,6 +479,7 @@ public class Bitcask {
             }
             file.skipBytes(valueSize);
         }
+        file.close();
     }
 
 
@@ -479,7 +495,7 @@ public class Bitcask {
         // Rename the file
 //        boolean isRenamed = oldFile.renameTo(newFile);
         FileUtils.moveFile(oldFile,newFile);
-
+        System.out.println("RENAMING "+ oldFilePath + " to " +newFilePath);
 //        if (!isRenamed)
 //            throw new FileSystemException("Failed to rename the file from:" + oldFilePath + " to:" + newFilePath);
     }

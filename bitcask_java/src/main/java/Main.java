@@ -9,7 +9,7 @@ public class Main {
         byte[] arr1 = {1,2,3};
         byte[] arr2 = {1,2,3,2};
         byte[] arr3 = {1,2,3,4};
-        for(int i=0;i<100000;i++)
+        for(int i=0;i<3000;i++)
             bitcask.put(arr1, arr2);
         bitcask.put(arr1, arr3);
 
