@@ -101,7 +101,7 @@ public class Bitcask {
         int valSize = valueBytes.length;
 
         // normal appending
-        KeyDirEntry pointer = new KeyDirEntry(directoryPath + FileSystems.getDefault().getSeparator() + "active.data", valSize, (int) offset, placementTimestamp);
+        KeyDirEntry pointer = new KeyDirEntry(directoryPath + FileSystems.getDefault().getSeparator() + "active.data", valSize, (int)offset, placementTimestamp);
         this.activeWritingFile.write(record);
         keyDir.put(key, pointer);
 
@@ -284,6 +284,7 @@ public class Bitcask {
                     this.keyDir.put(keyWrapper, pointer);
                 } else {
                     int offset = activeReader.readInt();
+                    filePath = filePath.split("\\.")[0] + ".data" ;
                     KeyDirEntry pointer = new KeyDirEntry(filePath, valueSize, offset, ts);
                     this.keyDir.put(keyWrapper, pointer);
                 }
