@@ -11,7 +11,8 @@ public class Bitcask {
     private RandomAccessFile activeWritingFile;
     private Hashtable<ByteArrayWrapper, KeyDirEntry> keyDir; // TODO
     private final long offset_limit = 10000; // roughly max file size 10 kB
-
+    private Thread compactionThread = null;
+    private Thread copyThread = null;
     private long currentDataFiles = 0;
     private final long MAX_DATA_FILES = 5;
 
@@ -119,7 +120,7 @@ public class Bitcask {
             String activeNewNamePathCopy = directoryPath + FileSystems.getDefault().getSeparator()+ newName + "copy"+".data";
 
 
-//
+
 //            String activeFilePath= this.directoryPath +"/"+ "active.data";
 //            String activeNewNamePath = directoryPath +"/" + newName + ".data";
 //            String activeNewNamePathCopy = directoryPath + "/"+ newName + "copy"+".data";
@@ -128,7 +129,8 @@ public class Bitcask {
 //            checkFileExistsOrCreate(activeNewNamePathCopy);
             this.changeKeyDirEntries(newName);
             // step 3
-            var copyThread = openCopyThread(activeNewNamePath,activeNewNamePathCopy);
+//            var copyThread = openCopyThread(activeNewNamePath,activeNewNamePathCopy);
+            startCopying(activeNewNamePath,activeNewNamePathCopy);
 
             // step 4
             createActiveFile(directoryPath);
@@ -138,23 +140,47 @@ public class Bitcask {
 
             //step 6
             if (this.currentDataFiles > this.MAX_DATA_FILES) {
-                startingMerging(directoryPath, copyThread);
+//                startingMerging(directoryPath, copyThread);
+                  startingMerging(directoryPath);
+
             }
         }
 
     }
 
-    private void startingMerging(String path , Thread copyThread) throws InterruptedException {
-        Thread thread = new Thread(()->{
-            try {
-                merge(path);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        });
-        copyThread.join();
-        thread.start();
+    private void startingMerging(String path ) throws InterruptedException {
+//        while (copyThread != null);
+        if(compactionThread == null){
+            this.compactionThread = new Thread(()->{
+                try {
+                    merge(path);
+                    compactionThread = null;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+            compactionThread.start();
+
+        }
+//        copyThread.join();
     }
+
+
+
+    private void startCopying(String oldPath, String newPath) throws IOException {
+//        Thread thread = new Thread(() -> {
+//            try {
+                copy(oldPath,newPath);
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+
+//        });
+//        thread.start();
+//        return thread;
+    }
+
+
 
     private Thread openCopyThread(String oldPath, String newPath){
         Thread thread = new Thread(() -> {
@@ -216,7 +242,7 @@ public class Bitcask {
 
         //rebuild from hintFiles
         for (String file : hintFiles) {
-            String fileID =  file + ".data";
+            String fileID =  file + ".hint";
             String dataFile = directoryPath +FileSystems.getDefault().getSeparator() + fileID;
             this.rebuildKeyDirFromFile(dataFile, true);
         }
@@ -298,21 +324,21 @@ public class Bitcask {
         List<String> fileNames = getFilesNames(fullDirectory);
         for(String file:fileNames){
             if(file.contains("active") || !file.contains("copy")) continue;
-            System.out.println(fullDirectory+ FileSystems.getDefault().getSeparator() + file);
+//            System.out.println(fullDirectory+ FileSystems.getDefault().getSeparator() + file);
             processFileBeforeCompaction(fullDirectory+ FileSystems.getDefault().getSeparator() + file,compressionKeyDir);
         }
         String compressedFullPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+"compressed.data";
         String compressedCopyPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+ "compressedcopy.data";
         checkFileExistsOrCreate(compressedFullPath);
         keyDir = writeCompressedFile(compressedFullPath,compressionKeyDir);
-        copy(compressedFullPath,compressedCopyPath);
+        startCopying(compressedFullPath,compressedCopyPath);
+        System.out.println(compressedFullPath + " -- " + compressedCopyPath);
         /*
             At this point the following should've been achieved
             - created new hash table containing the same as keyDir but with changing the mode to read from copies
             - made new file in the same directory named xxxxxxxxxcompressed.data where the xs are numbers
             - write the info from the duplicate keyDir to the file and updated the keyDir to make new reads from the compressed
             - create hint file
-
 
             At this point the directory should look like the following
             bitcask/
