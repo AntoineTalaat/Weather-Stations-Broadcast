@@ -71,7 +71,7 @@ public class Bitcask {
 
     public byte[] get(byte[] keyBytes) throws IOException {
         ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
-        if (!keyDir.contains(key))
+        if (keyDir.getOrDefault(key,null) == null )
             return null;
         KeyDirEntry pointer = keyDir.get(key);
 
