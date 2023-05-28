@@ -40,5 +40,44 @@ public class StationMessage {
         return g;
     }
 
+    public long getStation_id() {
+        return station_id;
+    }
+
+    public void setStation_id(long station_id) {
+        this.station_id = station_id;
+    }
+
+    public long getS_no() {
+        return s_no;
+    }
+
+    public void setS_no(long s_no) {
+        this.s_no = s_no;
+    }
+
+    public long getStatus_timestamp() {
+        return status_timestamp;
+    }
+
+    public void setStatus_timestamp(long status_timestamp) {
+        this.status_timestamp = status_timestamp;
+    }
+
+    public String getBattery_status() {
+        return battery_status;
+    }
+
+    public void setBattery_status(String battery_status) {
+        this.battery_status = battery_status;
+    }
+
+    public Weather getWeather() {
+        return weather;
+    }
+
+    public void setWeather(Weather weather) {
+        this.weather = weather;
+    }
 }
 

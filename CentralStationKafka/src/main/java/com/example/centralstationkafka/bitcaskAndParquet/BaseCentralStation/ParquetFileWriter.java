@@ -120,44 +120,44 @@ public class ParquetFileWriter {
 
 
 
-    // I get IllegalAccessError
-    private void writeToParquetAuxSpark(String newParquetFileName, List<StationMessage> list){
-
-
-        String sparkMasterUrl = "local";
-        SparkSession spark = SparkSession.builder()
-                .appName("ParquetWriter")
-                .master(sparkMasterUrl)
-                .config("spark.sql.catalogImplementation", "in-memory")
-                .config("spark.executor.memory", "1g")
-                .getOrCreate();
-        // Create a list of StationMessage objects
-        List<StationMessage> stationMessages = new ArrayList<>();
-        // Add StationMessage instances to the list
-
-        // Define the schema for StationMessage and Weather
-        StructType schema = new StructType()
-                .add("station_id", DataTypes.LongType)
-                .add("s_no", DataTypes.LongType)
-                .add("status_timestamp", DataTypes.LongType)
-                .add("battery_status", DataTypes.StringType)
-                .add("weather", new StructType()
-                        .add("humidity", DataTypes.IntegerType)
-                        .add("temperature", DataTypes.IntegerType)
-                        .add("wind_speed", DataTypes.IntegerType))
-                ;
-
-        // Create a DataFrame from the list of StationMessage objects
-        Dataset<Row> df = spark.createDataFrame(stationMessages, StationMessage.class);
-
-        // Write the DataFrame to a Parquet file
-        df.write()
-                .mode(SaveMode.Overwrite)
-                .parquet(newParquetFileName);
-
-        // Stop the SparkSession
-        spark.stop();
-    }
+//    // I get IllegalAccessError
+//    private void writeToParquetAuxSpark(String newParquetFileName, List<StationMessage> list){
+//
+//
+//        String sparkMasterUrl = "local";
+//        SparkSession spark = SparkSession.builder()
+//                .appName("ParquetWriter")
+//                .master(sparkMasterUrl)
+//                .config("spark.sql.catalogImplementation", "in-memory")
+//                .config("spark.executor.memory", "1g")
+//                .getOrCreate();
+//        // Create a list of StationMessage objects
+//        List<StationMessage> stationMessages = new ArrayList<>();
+//        // Add StationMessage instances to the list
+//
+//        // Define the schema for StationMessage and Weather
+//        StructType schema = new StructType()
+//                .add("station_id", DataTypes.LongType)
+//                .add("s_no", DataTypes.LongType)
+//                .add("status_timestamp", DataTypes.LongType)
+//                .add("battery_status", DataTypes.StringType)
+//                .add("weather", new StructType()
+//                        .add("humidity", DataTypes.IntegerType)
+//                        .add("temperature", DataTypes.IntegerType)
+//                        .add("wind_speed", DataTypes.IntegerType))
+//                ;
+//
+//        // Create a DataFrame from the list of StationMessage objects
+//        Dataset<Row> df = spark.createDataFrame(stationMessages, StationMessage.class);
+//
+//        // Write the DataFrame to a Parquet file
+//        df.write()
+//                .mode(SaveMode.Overwrite)
+//                .parquet(newParquetFileName);
+//
+//        // Stop the SparkSession
+//        spark.stop();
+//    }
 
     private void writeToParquetAuxHadoop(String newParquetFileName, List<StationMessage> list) throws IOException {
 //        String schemaPath = "/path/to/parquet/schema/file";

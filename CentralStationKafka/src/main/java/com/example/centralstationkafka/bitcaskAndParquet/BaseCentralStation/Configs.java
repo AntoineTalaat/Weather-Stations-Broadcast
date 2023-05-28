@@ -10,7 +10,7 @@ public class Configs {
     public static final ArrayList<Long> messageLatency = new ArrayList<>();
     public static int messages = 1000;
     public static final int PARQUET_LIMIT = 10000;
-    public static final String AVRO_SCHEMA_PATH = "src/main/java/BaseCentralStation/weatherStationAvro.avsc";
-    public static final String AVRO_W_SCHEMA_PATH = "src/main/java/BaseCentralStation/weatherOnly.avsc";
+    public static final String AVRO_SCHEMA_PATH = "src/main/java/com/example/centralstationkafka/bitcaskAndParquet/BaseCentralStation/weatherStationAvro.avsc";
+    public static final String AVRO_W_SCHEMA_PATH = "src/main/java/com/example/centralstationkafka/bitcaskAndParquet/BaseCentralStation/weatherOnly.avsc";
 
 }
