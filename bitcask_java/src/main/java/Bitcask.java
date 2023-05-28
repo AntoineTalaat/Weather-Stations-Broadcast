@@ -328,11 +328,12 @@ public class Bitcask {
         // create new compactionKeyDir
         Hashtable<ByteArrayWrapper,KeyDirEntry> compressionKeyDir = new Hashtable<>();
 //        getMostRecentKeyDirForCompression(compressionKeyDir);
+        ArrayList<String> toBeDeletedFiles = new ArrayList<>();
         List<String> fileNames = getFilesNames(fullDirectory);
         for(String file:fileNames){
             if(file.contains("active") || !file.contains("copy")) continue;
 //            System.out.println(fullDirectory+ FileSystems.getDefault().getSeparator() + file);
-            processFileBeforeCompaction(fullDirectory+ FileSystems.getDefault().getSeparator() + file,compressionKeyDir);
+            processFileBeforeCompaction(fullDirectory+ FileSystems.getDefault().getSeparator() + file,compressionKeyDir, toBeDeletedFiles);
         }
         String compressedFullPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+"compressed.data";
         String compressedCopyPath = fullDirectory + FileSystems.getDefault().getSeparator() +generateFileId()+ "compressedcopy.data";
@@ -365,14 +366,14 @@ public class Bitcask {
          */
 
         // deleting
-        deleteNonCompressedFiles(fullDirectory,compressedFullPath);
+        deleteNonCompressedFiles(fullDirectory,toBeDeletedFiles);
         createHintFile(compressedFullPath);
         startCopying(compressedFullPath,compressedCopyPath);
 //        System.out.println(compressedFullPath + " -- " + compressedCopyPath);
 
     }
 
-    private void deleteNonCompressedFiles(String parentDirectory, String compressedRealFile) throws IOException {
+    private void deleteNonCompressedFiles(String parentDirectory, List<String> list) throws IOException {
 
         List<String> files = getFilesNames(parentDirectory);
 //        for(String file : files){
@@ -381,11 +382,24 @@ public class Bitcask {
 //            // Delete the file
 //            Files.delete(path);
 //        }
-        for (String file : compacted){
+
+        // DELETE COPY FILES
+        for (String file : list){
             Path path = Paths.get(  file);
             System.out.println("DELETE "+file);
             Files.delete(path);
         }
+
+        for (String fileCopy:list){
+            String[] filePart = fileCopy.split("copy");
+            String file = filePart[0] + filePart[1];
+            Path path = Paths.get(  file);
+            System.out.println("DELETE "+file);
+            Files.delete(path);
+        }
+
+        list = new ArrayList<>();
+
 
     }
 
@@ -459,10 +473,10 @@ public class Bitcask {
      * @param currKeyDir
      * @throws IOException
      */
-    private void processFileBeforeCompaction(String path,Hashtable<ByteArrayWrapper,KeyDirEntry> currKeyDir) throws IOException {
+    private void processFileBeforeCompaction(String path,Hashtable<ByteArrayWrapper,KeyDirEntry> currKeyDir, List<String> toBeDeleted) throws IOException {
         RandomAccessFile file = new RandomAccessFile(path,"r");
         System.out.println("PROCESSING " + path + " Before Compaction");
-        compacted.add(path);
+        toBeDeleted.add(path);
         while (file.getFilePointer() < file.length()) {
             long ts = file.readLong();
             int keySize = file.readInt();
